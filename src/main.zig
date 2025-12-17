@@ -1,20 +1,20 @@
 const std = @import("std");
-const json_zig = @import("json_zig");
 
 const CryptoPrice = struct {
     symbol: []const u8,
-    price: []const u8,
+    price: f64,
     timestamp: u64,
 
     pub fn format(
         self: @This(),
         writer: anytype,
     ) !void {
-        //        _ = fmt;
-        //_ = options;
-        // 按 JSON 漂亮格式输出
-        // json stringfty print
-        std.debug.print("{}\n", .{json_zig.stringify(self, writer)});
+
+        // 手动序列化为紧凑 JSON，避免适配旧 Writer 接口
+        try writer.print(
+            "{{\"symbol\":\"{s}\",\"price\":{d},\"timestamp\":{d}}}",
+            .{ self.symbol, self.price, self.timestamp },
+        );
     }
 };
 
