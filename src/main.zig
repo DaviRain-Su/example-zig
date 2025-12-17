@@ -1,40 +1,36 @@
 const std = @import("std");
-const json = @import("json_zig");
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
-    const input =
-        \\{
-        \\  "name": "Zig",
-        \\  "version": 0.11,
-        \\  "features": ["fast", "safe"]
-        \\}
-    ;
+    // HTTP 客户端
+    var client = std.http.Client{ .allocator = allocator };
+    defer client.deinit();
 
-    // Parse the JSON string
-    // Note: It uses the allocator for internal structures (arrays, hashmaps).
-    const root = try json.parse(allocator, input);
-    // You can call root.deinit(allocator) if not using an ArenaAllocator,
-    // but Arena is recommended for easier cleanup.
+    // 把响应写入可增长缓冲
+    var body_writer = std.Io.Writer.Allocating.init(allocator);
+    defer body_writer.deinit();
 
-    if (root == .Object) {
-        const obj = root.Object;
-        if (obj.get("name")) |name| {
-            std.debug.print("Name: {s}\n", .{name.String});
-        }
-    }
+    const resp = try client.fetch(.{
+        .location = .{ .url = "http://httpbin.org/json" }, // 选个 HTTP 接口便于演示
+        .response_writer = &body_writer.writer,
+        .keep_alive = false,
+    });
+    if (resp.status != .ok) return error.UnexpectedStatus;
 
-    var list = try std.ArrayList(u8).initCapacity(allocator, 1024);
-    defer list.deinit(allocator);
+    // 拿到字节切片
+    var body = body_writer.toArrayList();
+    defer body.deinit(allocator);
 
-    const val = json.JsonValue{ .String = "Hello World" };
-    std.debug.print("JSON: {f}\n", .{val});
+    // 解析 JSON
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, body.items, .{});
+    defer parsed.deinit();
 
-    // Write to any std.io.Writer
-    try json.stringify(val, list.writer(allocator));
+    // 访问字段
+    const slideshow = parsed.value.object.get("slideshow") orelse return error.MissingField;
+    const title = slideshow.object.get("title") orelse return error.MissingField;
 
-    std.debug.print("JSON: {s}\n", .{list.items});
+    std.debug.print("status={s}, title={s}\n", .{ @tagName(resp.status), title.string });
 }
