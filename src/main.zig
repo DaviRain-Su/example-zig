@@ -50,6 +50,9 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
+    const api_key = try readApiKey(allocator, "config/api_key.txt");
+    defer allocator.free(api_key);
+
     var client = std.http.Client{ .allocator = allocator };
     defer client.deinit();
 
@@ -59,7 +62,7 @@ pub fn main() !void {
     const resp = try client.fetch(.{
         .location = .{ .url = "https://api.api-ninjas.com/v1/cryptoprice?symbol=BTCUSDT" },
         .extra_headers = &.{
-            .{ .name = "X-Api-Key", .value = "eKvfgR/g3LnmNbhfe4pfiQ==BxWkl56ZIGWtIt5K" },
+            .{ .name = "X-Api-Key", .value = api_key },
         },
         .response_writer = &body_writer.writer,
         .keep_alive = false,
@@ -75,4 +78,15 @@ pub fn main() !void {
 
     // 直接用自定义 format 漂亮打印
     std.debug.print("{f}\n", .{parsed.value});
+}
+
+fn readApiKey(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    const data = try file.readToEndAlloc(allocator, 4 * 1024);
+    const trimmed = std.mem.trim(u8, data, " \t\r\n");
+    const copy = try allocator.alloc(u8, trimmed.len);
+    @memcpy(copy, trimmed);
+    allocator.free(data);
+    return copy;
 }
