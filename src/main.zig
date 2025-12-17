@@ -1,36 +1,52 @@
 const std = @import("std");
+const json_zig = @import("json_zig");
+
+const CryptoPrice = struct {
+    symbol: []const u8,
+    price: []const u8,
+    timestamp: u64,
+
+    pub fn format(
+        self: @This(),
+        writer: anytype,
+    ) !void {
+        //        _ = fmt;
+        //_ = options;
+        // 按 JSON 漂亮格式输出
+        // json stringfty print
+        std.debug.print("{}\n", .{json_zig.stringify(self, writer)});
+    }
+};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // HTTP 客户端
     var client = std.http.Client{ .allocator = allocator };
     defer client.deinit();
 
-    // 把响应写入可增长缓冲
-    var body_writer = std.Io.Writer.Allocating.init(allocator);
+    var body_writer = std.io.Writer.Allocating.init(allocator);
     defer body_writer.deinit();
 
     const resp = try client.fetch(.{
-        .location = .{ .url = "http://httpbin.org/json" }, // 选个 HTTP 接口便于演示
+        .location = .{ .url = "https://api.api-ninjas.com/v1/cryptoprice?symbol=BTCUSDT" },
+        .extra_headers = &.{
+            .{ .name = "X-Api-Key", .value = "eKvfgR/g3LnmNbhfe4pfiQ==BxWkl56ZIGWtIt5K" },
+        },
         .response_writer = &body_writer.writer,
         .keep_alive = false,
     });
     if (resp.status != .ok) return error.UnexpectedStatus;
 
-    // 拿到字节切片
     var body = body_writer.toArrayList();
     defer body.deinit(allocator);
 
-    // 解析 JSON
-    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, body.items, .{});
+    // 解析为 CryptoPrice 结构体
+    const parsed = try std.json.parseFromSlice(CryptoPrice, allocator, body.items, .{});
     defer parsed.deinit();
+    const value: CryptoPrice = parsed.value;
 
-    // 访问字段
-    const slideshow = parsed.value.object.get("slideshow") orelse return error.MissingField;
-    const title = slideshow.object.get("title") orelse return error.MissingField;
-
-    std.debug.print("status={s}, title={s}\n", .{ @tagName(resp.status), title.string });
+    // 直接用自定义 format 漂亮打印
+    std.debug.print("{f}\n", .{value});
 }
